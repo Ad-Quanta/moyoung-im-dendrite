@@ -122,29 +122,12 @@ func NewInternalAPI(
 		logrus.WithError(err).Panic("failed to start signing key consumer")
 	}
 
-	receiptConsumer := consumers.NewOutputReceiptEventConsumer(
-		processContext, &dendriteCfg.UserAPI, js, db, syncProducer, pgClient,
-	)
-	if err := receiptConsumer.Start(); err != nil {
-		logrus.WithError(err).Panic("failed to start user API receipt consumer")
-	}
-
 	eventConsumer := consumers.NewOutputRoomEventConsumer(
 		processContext, &dendriteCfg.UserAPI, js, db, pgClient, rsAPI, syncProducer,
 	)
 	if err := eventConsumer.Start(); err != nil {
 		logrus.WithError(err).Panic("failed to start user API streamed event consumer")
 	}
-
-	var cleanOldNotifs func()
-	cleanOldNotifs = func() {
-		logrus.Infof("Cleaning old notifications")
-		if err := db.DeleteOldNotifications(processContext.Context()); err != nil {
-			logrus.WithError(err).Error("Failed to clean old notifications")
-		}
-		time.AfterFunc(time.Hour, cleanOldNotifs)
-	}
-	time.AfterFunc(time.Minute, cleanOldNotifs)
 
 	if dendriteCfg.Global.ReportStats.Enabled {
 		go util.StartPhoneHomeCollector(time.Now(), dendriteCfg, db)

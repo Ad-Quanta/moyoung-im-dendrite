@@ -156,19 +156,12 @@ func TestJoinResponse_MarshalJSON(t *testing.T) {
 			want: []byte("{}"),
 		},
 		{
-			name: "unread notifications are removed, if everything else is empty",
-			fields: fields{
-				UnreadNotifications: &UnreadNotifications{},
-			},
-			want: []byte("{}"),
-		},
-		{
-			name: "unread notifications are NOT removed, if state is set",
+			name: "unread notifications are omitted when state is set",
 			fields: fields{
 				State:               &ClientEvents{Events: []synctypes.ClientEvent{{Content: []byte("{}")}}},
 				UnreadNotifications: &UnreadNotifications{NotificationCount: 1},
 			},
-			want: []byte(`{"state":{"events":[{"content":{},"type":""}]},"unread_notifications":{"highlight_count":0,"notification_count":1}}`),
+			want: []byte(`{"state":{"events":[{"content":{},"type":""}]}}`),
 		},
 		{
 			name: "roomID is removed from EDUs",

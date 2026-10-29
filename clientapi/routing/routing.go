@@ -1117,19 +1117,6 @@ func Setup(
 		}),
 	).Methods(http.MethodPost, http.MethodOptions)
 
-	v3mux.Handle("/rooms/{roomID}/read_markers",
-		httputil.MakeAuthAPI("rooms_read_markers", userAPI, func(req *http.Request, device *userapi.Device) util.JSONResponse {
-			if r := rateLimits.Limit(req, device); r != nil {
-				return *r
-			}
-			vars, err := httputil.URLDecodeMapValues(mux.Vars(req))
-			if err != nil {
-				return util.ErrorResponse(err)
-			}
-			return SaveReadMarker(req, userAPI, rsAPI, syncProducer, device, vars["roomID"])
-		}),
-	).Methods(http.MethodPost, http.MethodOptions)
-
 	v3mux.Handle("/rooms/{roomID}/forget",
 		httputil.MakeAuthAPI("rooms_forget", userAPI, func(req *http.Request, device *userapi.Device) util.JSONResponse {
 			if r := rateLimits.Limit(req, device); r != nil {
@@ -1194,12 +1181,6 @@ func Setup(
 			return DeleteDevices(req, userInteractiveAuth, userAPI, device)
 		}),
 	).Methods(http.MethodPost, http.MethodOptions)
-
-	v3mux.Handle("/notifications",
-		httputil.MakeAuthAPI("get_notifications", userAPI, func(req *http.Request, device *userapi.Device) util.JSONResponse {
-			return GetNotifications(req, device, userAPI)
-		}),
-	).Methods(http.MethodGet, http.MethodOptions)
 
 	v3mux.Handle("/pushers",
 		httputil.MakeAuthAPI("get_pushers", userAPI, func(req *http.Request, device *userapi.Device) util.JSONResponse {
@@ -1480,19 +1461,6 @@ func Setup(
 		httputil.MakeAuthAPI("keys_claim", userAPI, func(req *http.Request, device *userapi.Device) util.JSONResponse {
 			return ClaimKeys(req, userAPI)
 		}, httputil.WithAllowGuests()),
-	).Methods(http.MethodPost, http.MethodOptions)
-	v3mux.Handle("/rooms/{roomId}/receipt/{receiptType}/{eventId}",
-		httputil.MakeAuthAPI(spec.Join, userAPI, func(req *http.Request, device *userapi.Device) util.JSONResponse {
-			if r := rateLimits.Limit(req, device); r != nil {
-				return *r
-			}
-			vars, err := httputil.URLDecodeMapValues(mux.Vars(req))
-			if err != nil {
-				return util.ErrorResponse(err)
-			}
-
-			return SetReceipt(req, userAPI, syncProducer, device, vars["roomId"], vars["receiptType"], vars["eventId"])
-		}),
 	).Methods(http.MethodPost, http.MethodOptions)
 	v3mux.Handle("/presence/{userId}/status",
 		httputil.MakeAuthAPI("set_presence", userAPI, func(req *http.Request, device *userapi.Device) util.JSONResponse {

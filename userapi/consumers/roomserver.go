@@ -28,10 +28,8 @@ import (
 	"github.com/element-hq/dendrite/setup/process"
 	"github.com/element-hq/dendrite/syncapi/synctypes"
 	"github.com/element-hq/dendrite/syncapi/types"
-	"github.com/element-hq/dendrite/userapi/api"
 	"github.com/element-hq/dendrite/userapi/producers"
 	"github.com/element-hq/dendrite/userapi/storage"
-	"github.com/element-hq/dendrite/userapi/storage/tables"
 	userAPITypes "github.com/element-hq/dendrite/userapi/types"
 	"github.com/element-hq/dendrite/userapi/util"
 )
@@ -374,12 +372,6 @@ func (s *OutputRoomEventConsumer) processMessage(ctx context.Context, event *rst
 
 	}
 
-	// TODO: run in parallel with localRoomMembers.
-	roomName, err := s.roomName(ctx, event)
-	if err != nil {
-		return fmt.Errorf("s.roomName: %w", err)
-	}
-
 	log.WithFields(log.Fields{
 		"event_id":    event.EventID(),
 		"room_id":     event.RoomID().String(),
@@ -387,20 +379,7 @@ func (s *OutputRoomEventConsumer) processMessage(ctx context.Context, event *rst
 		"room_size":   roomSize,
 	}).Tracef("Notifying members")
 
-	// Notification.UserIsTarget is a per-member field, so we
-	// cannot group all users in a single request.
-	//
-	// TODO: does it have to be set? It's not required, and
-	// removing it means we can send all notifications to
-	// e.g. Element's Push gateway in one go.
-	for _, mem := range members {
-		if err := s.notifyLocal(ctx, event, mem, roomSize, roomName, streamPos); err != nil {
-			log.WithFields(log.Fields{
-				"localpart": mem.Localpart,
-			}).WithError(err).Error("Unable to push to local user")
-			continue
-		}
-	}
+	// 已关闭通知功能链，不再为本地成员执行通知规则、推送或通知表写入。
 
 	return nil
 }
@@ -563,7 +542,7 @@ func unmarshalCanonicalAlias(event *rstypes.HeaderedEvent) (string, error) {
 }
 
 // notifyLocal finds the right push actions for a local user, given an event.
-func (s *OutputRoomEventConsumer) notifyLocal(ctx context.Context, event *rstypes.HeaderedEvent, mem *localMembership, roomSize int, roomName string, streamPos uint64) error {
+func (s *OutputRoomEventConsumer) notifyLocal(ctx context.Context, event *rstypes.HeaderedEvent, mem *localMembership, roomSize int, roomName string) error {
 	actions, err := s.evaluatePushRules(ctx, event, mem, roomSize)
 	if err != nil {
 		return fmt.Errorf("s.evaluatePushRules: %w", err)
@@ -582,51 +561,15 @@ func (s *OutputRoomEventConsumer) notifyLocal(ctx context.Context, event *rstype
 		return nil
 	}
 
-	devicesByURLAndFormat, profileTag, err := s.localPushDevices(ctx, mem.Localpart, mem.Domain, tweaks)
+	devicesByURLAndFormat, _, err := s.localPushDevices(ctx, mem.Localpart, mem.Domain, tweaks)
 	if err != nil {
 		return fmt.Errorf("s.localPushDevices: %w", err)
 	}
-	clientEvent, err := synctypes.ToClientEvent(event, synctypes.FormatSync, func(roomID spec.RoomID, senderID spec.SenderID) (*spec.UserID, error) {
-		return s.rsAPI.QueryUserIDForSender(ctx, roomID, senderID)
-	})
-	if err != nil {
-		return err
-	}
-
-	n := &api.Notification{
-		Actions: actions,
-		// UNSPEC: the spec doesn't say this is a ClientEvent, but the
-		// fields seem to match. room_id should be missing, which
-		// matches the behaviour of FormatSync.
-		Event: *clientEvent,
-		// TODO: this is per-device, but it's not part of the primary
-		// key. So inserting one notification per profile tag doesn't
-		// make sense. What is this supposed to be? Sytests require it
-		// to "work", but they only use a single device.
-		ProfileTag: profileTag,
-		RoomID:     event.RoomID().String(),
-		TS:         spec.AsTimestamp(time.Now()),
-	}
-	if err = s.db.InsertNotification(ctx, mem.Localpart, mem.Domain, event.EventID(), streamPos, tweaks, n); err != nil {
-		return fmt.Errorf("s.db.InsertNotification: %w", err)
-	}
-
-	if err = s.syncProducer.GetAndSendNotificationData(ctx, mem.UserID, event.RoomID().String()); err != nil {
-		return fmt.Errorf("s.syncProducer.GetAndSendNotificationData: %w", err)
-	}
-
-	// We do this after InsertNotification. Thus, this should always return >=1.
-	userNumUnreadNotifs, err := s.db.GetNotificationCount(ctx, mem.Localpart, mem.Domain, tables.AllNotifications)
-	if err != nil {
-		return fmt.Errorf("s.db.GetNotificationCount: %w", err)
-	}
-
 	log.WithFields(log.Fields{
-		"event_id":   event.EventID(),
-		"room_id":    event.RoomID().String(),
-		"localpart":  mem.Localpart,
-		"num_urls":   len(devicesByURLAndFormat),
-		"num_unread": userNumUnreadNotifs,
+		"event_id":  event.EventID(),
+		"room_id":   event.RoomID().String(),
+		"localpart": mem.Localpart,
+		"num_urls":  len(devicesByURLAndFormat),
 	}).Trace("Notifying single member")
 
 	// Push gateways are out of our control, and we cannot risk
@@ -659,7 +602,7 @@ func (s *OutputRoomEventConsumer) notifyLocal(ctx context.Context, event *rstype
 				for _, dev := range devices {
 					// Give each HTTP request its own context.
 					httpCtx, httpCancel := context.WithTimeout(ctx, 30*time.Second)
-					rej, err := s.notifyHTTP(httpCtx, event, url, format, []*pushgateway.Device{dev}, mem.Localpart, roomName, int(userNumUnreadNotifs))
+					rej, err := s.notifyHTTP(httpCtx, event, url, format, []*pushgateway.Device{dev}, mem.Localpart, roomName)
 					httpCancel()
 					if err != nil {
 						log.WithFields(log.Fields{
@@ -817,7 +760,7 @@ func (s *OutputRoomEventConsumer) localPushDevices(ctx context.Context, localpar
 }
 
 // notifyHTTP performs a notificatation to a Push Gateway.
-func (s *OutputRoomEventConsumer) notifyHTTP(ctx context.Context, event *rstypes.HeaderedEvent, url, format string, devices []*pushgateway.Device, localpart, roomName string, userNumUnreadNotifs int) ([]*pushgateway.Device, error) {
+func (s *OutputRoomEventConsumer) notifyHTTP(ctx context.Context, event *rstypes.HeaderedEvent, url, format string, devices []*pushgateway.Device, localpart, roomName string) ([]*pushgateway.Device, error) {
 	logger := log.WithFields(log.Fields{
 		"event_id":    event.EventID(),
 		"url":         url,
@@ -830,9 +773,6 @@ func (s *OutputRoomEventConsumer) notifyHTTP(ctx context.Context, event *rstypes
 	case "event_id_only":
 		req = pushgateway.NotifyRequest{
 			Notification: pushgateway.Notification{
-				Counts: &pushgateway.Counts{
-					Unread: userNumUnreadNotifs,
-				},
 				Devices: devices,
 				EventID: event.EventID(),
 				RoomID:  event.RoomID().String(),
@@ -847,10 +787,7 @@ func (s *OutputRoomEventConsumer) notifyHTTP(ctx context.Context, event *rstypes
 		}
 		req = pushgateway.NotifyRequest{
 			Notification: pushgateway.Notification{
-				Content: event.Content(),
-				Counts: &pushgateway.Counts{
-					Unread: userNumUnreadNotifs,
-				},
+				Content:  event.Content(),
 				Devices:  devices,
 				EventID:  event.EventID(),
 				ID:       event.EventID(),

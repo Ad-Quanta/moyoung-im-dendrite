@@ -115,13 +115,6 @@ func AddPublicRoutes(
 		logrus.WithError(err).Panicf("failed to start client data consumer")
 	}
 
-	notificationConsumer := consumers.NewOutputNotificationDataConsumer(
-		processContext, &dendriteCfg.SyncAPI, js, syncDB, notifier, streams.NotificationDataStreamProvider,
-	)
-	if err = notificationConsumer.Start(); err != nil {
-		logrus.WithError(err).Panicf("failed to start notification data consumer")
-	}
-
 	typingConsumer := consumers.NewOutputTypingEventConsumer(
 		processContext, &dendriteCfg.SyncAPI, js, eduCache, notifier, streams.TypingStreamProvider,
 	)

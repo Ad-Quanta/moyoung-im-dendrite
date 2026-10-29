@@ -459,12 +459,13 @@ type Summary struct {
 
 // JoinResponse represents a /sync response for a room which is under the 'join' or 'peek' key.
 type JoinResponse struct {
-	Summary              *Summary      `json:"summary,omitempty"`
-	State                *ClientEvents `json:"state,omitempty"`
-	Timeline             *Timeline     `json:"timeline,omitempty"`
-	Ephemeral            *ClientEvents `json:"ephemeral,omitempty"`
-	AccountData          *ClientEvents `json:"account_data,omitempty"`
-	*UnreadNotifications `json:"unread_notifications,omitempty"`
+	Summary     *Summary      `json:"summary,omitempty"`
+	State       *ClientEvents `json:"state,omitempty"`
+	Timeline    *Timeline     `json:"timeline,omitempty"`
+	Ephemeral   *ClientEvents `json:"ephemeral,omitempty"`
+	AccountData *ClientEvents `json:"account_data,omitempty"`
+	// 通知功能已关闭，保留类型字段仅兼容内部调用，不再序列化到 /sync。
+	*UnreadNotifications `json:"-"`
 }
 
 func (jr JoinResponse) MarshalJSON() ([]byte, error) {
@@ -498,24 +499,17 @@ func (jr JoinResponse) MarshalJSON() ([]byte, error) {
 		}
 
 	}
-	if jr.UnreadNotifications != nil {
-		// if everything else is nil, also remove UnreadNotifications
-		if a.State == nil && a.Ephemeral == nil && a.AccountData == nil && a.Timeline == nil && a.Summary == nil {
-			a.UnreadNotifications = nil
-		}
-	}
 	return json.Marshal(a)
 }
 
 // NewJoinResponse creates an empty response with initialised arrays.
 func NewJoinResponse() *JoinResponse {
 	return &JoinResponse{
-		Summary:             &Summary{},
-		State:               &ClientEvents{},
-		Timeline:            &Timeline{},
-		Ephemeral:           &ClientEvents{},
-		AccountData:         &ClientEvents{},
-		UnreadNotifications: &UnreadNotifications{},
+		Summary:     &Summary{},
+		State:       &ClientEvents{},
+		Timeline:    &Timeline{},
+		Ephemeral:   &ClientEvents{},
+		AccountData: &ClientEvents{},
 	}
 }
 

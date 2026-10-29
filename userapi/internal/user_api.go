@@ -37,7 +37,6 @@ import (
 	"github.com/element-hq/dendrite/userapi/producers"
 	"github.com/element-hq/dendrite/userapi/storage"
 	"github.com/element-hq/dendrite/userapi/storage/tables"
-	userapiUtil "github.com/element-hq/dendrite/userapi/util"
 )
 
 type UserInternalAPI struct {
@@ -107,11 +106,6 @@ func (a *UserInternalAPI) InputAccountData(ctx context.Context, req *api.InputAc
 		ignoredUsers = &synctypes.IgnoredUsers{}
 		_ = json.Unmarshal(req.AccountData, ignoredUsers)
 	}
-	if req.DataType == "m.fully_read" {
-		if err := a.setFullyRead(ctx, req); err != nil {
-			return err
-		}
-	}
 	if err := a.SyncProducer.SendAccountData(req.UserID, eventutil.AccountData{
 		RoomID:       req.RoomID,
 		Type:         req.DataType,
@@ -119,44 +113,6 @@ func (a *UserInternalAPI) InputAccountData(ctx context.Context, req *api.InputAc
 	}); err != nil {
 		util.GetLogger(ctx).WithError(err).Error("a.SyncProducer.SendAccountData failed")
 		return fmt.Errorf("failed to send account data to output: %w", err)
-	}
-	return nil
-}
-
-func (a *UserInternalAPI) setFullyRead(ctx context.Context, req *api.InputAccountDataRequest) error {
-	var output eventutil.ReadMarkerJSON
-
-	if err := json.Unmarshal(req.AccountData, &output); err != nil {
-		return err
-	}
-	localpart, domain, err := gomatrixserverlib.SplitID('@', req.UserID)
-	if err != nil {
-		logrus.WithError(err).Error("UserInternalAPI.setFullyRead: SplitID failure")
-		return nil
-	}
-	if !a.Config.Matrix.IsLocalServerName(domain) {
-		return nil
-	}
-
-	deleted, err := a.DB.DeleteNotificationsUpTo(ctx, localpart, domain, req.RoomID, uint64(spec.AsTimestamp(time.Now())))
-	if err != nil {
-		logrus.WithError(err).Errorf("UserInternalAPI.setFullyRead: DeleteNotificationsUpTo failed")
-		return err
-	}
-
-	if err = a.SyncProducer.GetAndSendNotificationData(ctx, req.UserID, req.RoomID); err != nil {
-		logrus.WithError(err).Error("UserInternalAPI.setFullyRead: GetAndSendNotificationData failed")
-		return err
-	}
-
-	// nothing changed, no need to notify the push gateway
-	if !deleted {
-		return nil
-	}
-
-	if err = userapiUtil.NotifyUserCountsAsync(ctx, a.PgClient, localpart, domain, a.DB); err != nil {
-		logrus.WithError(err).Error("UserInternalAPI.setFullyRead: NotifyUserCounts failed")
-		return err
 	}
 	return nil
 }

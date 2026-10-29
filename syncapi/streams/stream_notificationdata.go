@@ -3,7 +3,6 @@ package streams
 import (
 	"context"
 
-	"github.com/element-hq/dendrite/internal/eventutil"
 	"github.com/element-hq/dendrite/syncapi/storage"
 	"github.com/element-hq/dendrite/syncapi/types"
 )
@@ -41,27 +40,6 @@ func (p *NotificationDataStreamProvider) IncrementalSync(
 	req *types.SyncRequest,
 	from, _ types.StreamPosition,
 ) types.StreamPosition {
-	// Get the unread notifications for rooms in our join response.
-	// This is to ensure clients always have an unread notification section
-	// and can display the correct numbers.
-	countsByRoom, err := snapshot.GetUserUnreadNotificationCountsForRooms(ctx, req.Device.UserID, req.Rooms)
-	if err != nil {
-		req.Log.WithError(err).Error("GetUserUnreadNotificationCountsForRooms failed")
-		return from
-	}
-
-	// We're merely decorating existing rooms.
-	for roomID, jr := range req.Response.Rooms.Join {
-		counts := countsByRoom[roomID]
-		if counts == nil {
-			counts = &eventutil.NotificationData{}
-		}
-		jr.UnreadNotifications = &types.UnreadNotifications{
-			HighlightCount:    counts.UnreadHighlightCount,
-			NotificationCount: counts.UnreadNotificationCount,
-		}
-		req.Response.Rooms.Join[roomID] = jr
-	}
-
+	// 已关闭通知功能链，/sync 不再填充 unread_notifications。
 	return p.LatestPosition(ctx)
 }

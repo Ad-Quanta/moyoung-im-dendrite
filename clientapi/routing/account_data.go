@@ -12,10 +12,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/element-hq/dendrite/clientapi/httputil"
 	"github.com/element-hq/dendrite/clientapi/producers"
-	"github.com/element-hq/dendrite/internal/eventutil"
-	roomserverAPI "github.com/element-hq/dendrite/roomserver/api"
 	"github.com/element-hq/dendrite/userapi/api"
 	"github.com/matrix-org/gomatrixserverlib/spec"
 
@@ -119,72 +116,6 @@ func SaveAccountData(
 	if err := userAPI.InputAccountData(req.Context(), &dataReq, &dataRes); err != nil {
 		util.GetLogger(req.Context()).WithError(err).Error("userAPI.InputAccountData failed")
 		return util.ErrorResponse(err)
-	}
-
-	return util.JSONResponse{
-		Code: http.StatusOK,
-		JSON: struct{}{},
-	}
-}
-
-type fullyReadEvent struct {
-	EventID string `json:"event_id"`
-}
-
-// SaveReadMarker implements POST /rooms/{roomId}/read_markers
-func SaveReadMarker(
-	req *http.Request,
-	userAPI api.ClientUserAPI, rsAPI roomserverAPI.ClientRoomserverAPI,
-	syncProducer *producers.SyncAPIProducer, device *api.Device, roomID string,
-) util.JSONResponse {
-	deviceUserID, err := spec.NewUserID(device.UserID, true)
-	if err != nil {
-		return util.JSONResponse{
-			Code: http.StatusBadRequest,
-			JSON: spec.BadJSON("userID for this device is invalid"),
-		}
-	}
-
-	// Verify that the user is a member of this room
-	resErr := checkMemberInRoom(req.Context(), rsAPI, *deviceUserID, roomID)
-	if resErr != nil {
-		return *resErr
-	}
-
-	var r eventutil.ReadMarkerJSON
-	resErr = httputil.UnmarshalJSONRequest(req, &r)
-	if resErr != nil {
-		return *resErr
-	}
-
-	if r.FullyRead != "" {
-		data, err := json.Marshal(fullyReadEvent{EventID: r.FullyRead})
-		if err != nil {
-			return util.JSONResponse{
-				Code: http.StatusInternalServerError,
-				JSON: spec.InternalServerError{},
-			}
-		}
-
-		dataReq := api.InputAccountDataRequest{
-			UserID:      device.UserID,
-			DataType:    "m.fully_read",
-			RoomID:      roomID,
-			AccountData: data,
-		}
-		dataRes := api.InputAccountDataResponse{}
-		if err := userAPI.InputAccountData(req.Context(), &dataReq, &dataRes); err != nil {
-			util.GetLogger(req.Context()).WithError(err).Error("userAPI.InputAccountData failed")
-			return util.ErrorResponse(err)
-		}
-	}
-
-	// Handle the read receipts that may be included in the read marker.
-	if r.Read != "" {
-		return SetReceipt(req, userAPI, syncProducer, device, roomID, "m.read", r.Read)
-	}
-	if r.ReadPrivate != "" {
-		return SetReceipt(req, userAPI, syncProducer, device, roomID, "m.read.private", r.ReadPrivate)
 	}
 
 	return util.JSONResponse{
