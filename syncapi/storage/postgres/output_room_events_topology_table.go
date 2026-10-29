@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS syncapi_output_room_events_topology (
 );
 -- The topological order will be used in events selection and ordering
 CREATE UNIQUE INDEX IF NOT EXISTS syncapi_event_topological_position_idx ON syncapi_output_room_events_topology(topological_position, stream_position, room_id);
+-- 按房间和拓扑位置查询事件时使用，匹配同步接口的最左过滤条件。
+CREATE INDEX IF NOT EXISTS syncapi_output_room_events_topology_room_idx ON syncapi_output_room_events_topology(room_id, topological_position, stream_position);
 `
 
 const insertEventInTopologySQL = "" +

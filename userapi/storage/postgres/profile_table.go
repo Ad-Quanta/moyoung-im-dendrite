@@ -39,11 +39,13 @@ const insertProfileSQL = "" +
 const selectProfileByLocalpartSQL = "" +
 	"SELECT localpart, server_name, display_name, avatar_url FROM userapi_profiles WHERE localpart = $1 AND server_name = $2"
 
+// 更新资料时限定 old 与 new 为同一用户，避免无连接条件导致笛卡尔积和错误的变更判断。
 const setAvatarURLSQL = "" +
 	"UPDATE userapi_profiles AS new" +
 	" SET avatar_url = $1" +
 	" FROM userapi_profiles AS old" +
 	" WHERE new.localpart = $2 AND new.server_name = $3" +
+	" AND old.localpart = new.localpart AND old.server_name = new.server_name" +
 	" RETURNING new.display_name, old.avatar_url <> new.avatar_url"
 
 const setDisplayNameSQL = "" +
@@ -51,6 +53,7 @@ const setDisplayNameSQL = "" +
 	" SET display_name = $1" +
 	" FROM userapi_profiles AS old" +
 	" WHERE new.localpart = $2 AND new.server_name = $3" +
+	" AND old.localpart = new.localpart AND old.server_name = new.server_name" +
 	" RETURNING new.avatar_url, old.display_name <> new.display_name"
 
 const selectProfilesBySearchSQL = "" +

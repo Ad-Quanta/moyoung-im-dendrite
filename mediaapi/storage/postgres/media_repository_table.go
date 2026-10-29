@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS mediaapi_media_repository (
     user_id TEXT NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS mediaapi_media_repository_index ON mediaapi_media_repository (media_id, media_origin);
+-- 按文件哈希查询媒体时使用，避免在 base64hash 上进行全表扫描。
+CREATE INDEX IF NOT EXISTS mediaapi_media_repository_base64hash_idx ON mediaapi_media_repository (base64hash, media_origin);
 `
 
 const insertMediaSQL = `

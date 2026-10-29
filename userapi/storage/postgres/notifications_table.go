@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS userapi_notifications (
 CREATE INDEX IF NOT EXISTS userapi_notification_localpart_room_id_event_id_idx ON userapi_notifications(localpart, server_name, room_id, event_id);
 CREATE INDEX IF NOT EXISTS userapi_notification_localpart_room_id_id_idx ON userapi_notifications(localpart, server_name, room_id, id);
 CREATE INDEX IF NOT EXISTS userapi_notification_localpart_id_idx ON userapi_notifications(localpart, server_name, id);
+-- 统计未读通知时使用，避免按 localpart、server_name 过滤后再扫描 read 列。
+CREATE INDEX IF NOT EXISTS userapi_notifications_localpart_server_read_idx ON userapi_notifications(localpart, server_name, read);
 `
 
 const insertNotificationSQL = "" +
